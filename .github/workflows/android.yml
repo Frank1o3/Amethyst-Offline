@@ -38,7 +38,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v9
         with:
           workflow: build.yml
-          path: app_pojavlauncher/src/main/assets/components/jre-17
+          path: app_pojavlauncher/src/main/assets/components/jre-new
           workflow_conclusion: success
           repo: AngelAuraMC/angelauramc-openjdk-build
           branch: buildjre17-21
