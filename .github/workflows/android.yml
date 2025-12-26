@@ -96,11 +96,13 @@ jobs:
 
       - name: Build Debug APK (with runtime)
         run: |
+          cd Amethyst-Android
           gradle :app_pojavlauncher:assembleDebug
           mv app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/app-debug.apk
 
       - name: Build Debug APK (no runtime)
         run: |
+          cd Amethyst-Android
           rm -rf app_pojavlauncher/src/main/assets/components/jre
           rm -rf app_pojavlauncher/src/main/assets/components/jre-new
           rm -rf app_pojavlauncher/src/main/assets/components/jre-21
