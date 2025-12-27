@@ -43,6 +43,7 @@ jobs:
 
       # ----------------------------------------------------------------
       # JRE DOWNLOADS (Conditional)
+      # These only run for the "With Runtime" job
       # ----------------------------------------------------------------
       
       - name: Get JRE 8 (Android)
@@ -79,27 +80,34 @@ jobs:
           workflow_conclusion: completed
 
       # -------------------------
-      # PATCHING & ASSETS
+      # PATCHING
       # -------------------------
       
       - name: Apply Patches
         run: |
-          # Patches are in the root (../), applied to files inside Amethyst-Android
+          # Apply patches located in the root to the source code inside the submodule
           patch -p1 app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/tasks/MinecraftDownloader.java < ../MinecraftDownloader.patch
           patch -p1 app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/Tools.java < ../Tools.patch
 
-      - uses: gradle/actions/setup-gradle@v4
+      # -------------------------
+      # GRADLE BUILD
+      # -------------------------
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11'
+          # Disabled because SDL submodules often contain unrecognized wrapper jars
+          validate-wrappers: false 
 
       - name: Build APK
         run: |
           ./scripts/languagelist_updater.sh
-          # Build JRE JARs and the main APK in one session
+          # Build JRE JARs and the main APK in one command for efficiency
           gradle :jre_lwjgl3glfw:build :app_pojavlauncher:assembleDebug --no-daemon
 
       # -------------------------
-      # ARTIFACT PREP
+      # ARTIFACT PREPARATION
       # -------------------------
 
       - name: Finalize Artifacts
