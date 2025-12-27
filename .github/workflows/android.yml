@@ -1,8 +1,6 @@
 name: Android CI
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize]
   push:
     branches: [ "main" ]
   workflow_dispatch:
@@ -11,7 +9,6 @@ jobs:
   build:
     name: Build (${{ matrix.variant }})
     runs-on: ubuntu-22.04
-    
     strategy:
       fail-fast: false
       matrix:
@@ -41,9 +38,7 @@ jobs:
           java-version: '21'
           cache: 'gradle'
 
-      # -------------------------
-      # JRE DOWNLOADS (Conditional)
-      # -------------------------
+      # ... (JRE Download steps from previous versions go here) ...
       - name: Get JRE 8 (Android)
         if: ${{ matrix.include_jre }}
         uses: dawidd6/action-download-artifact@v9
@@ -77,9 +72,6 @@ jobs:
           path: Amethyst-Android/app_pojavlauncher/src/main/assets/components/jre-21
           workflow_conclusion: completed
 
-      # -------------------------
-      # BUILD
-      # -------------------------
       - name: Apply Patches
         run: |
           patch -p1 app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/tasks/MinecraftDownloader.java < ../MinecraftDownloader.patch
@@ -109,26 +101,32 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: Amethyst-Android/out/*
 
-  # -------------------------
-  # REPORTING JOB
-  # -------------------------
-  report:
-    name: Post Build Links
+  publish:
+    name: Publish Release
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     permissions:
-      pull-requests: write
+      contents: write
     steps:
-      - name: Comment on PR
-        uses: thollander/actions-comment-pull-request@v2
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          message: |
-            ### ✅ Build Successful!
-            Parallel builds finished in record time. You can download the zipped artifacts below:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create Rolling Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-dev
+          name: "Latest Development Build"
+          body: |
+            Automated build from the latest commit.
             
-            * 📦 **[Download app-debug.zip (Full)](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)**
-            * 📦 **[Download app-debug-noruntime.zip (Lite)](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)**
-            
-            _Check the "Artifacts" section at the bottom of the linked page._
-          comment_tag: build_links
+            **Build Details:**
+            - Run ID: ${{ github.run_id }}
+            - Commit: ${{ github.sha }}
+          draft: false
+          prerelease: true
+          files: |
+            release-assets/*.apk
+            release-assets/*.md5
