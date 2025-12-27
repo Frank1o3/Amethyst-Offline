@@ -2,131 +2,115 @@ name: Android CI
 
 on:
   pull_request:
-    types: [opened, reopened]
+    types: [opened, reopened, synchronize]
   push:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
+    name: Build (${{ matrix.variant }})
     runs-on: ubuntu-22.04
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: "With Runtime"
+            artifact_name: "app-debug"
+            include_jre: true
+          - variant: "No Runtime"
+            artifact_name: "app-debug-noruntime"
+            include_jre: false
+
+    defaults:
+      run:
+        working-directory: Amethyst-Android
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 1
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+          cache: 'gradle'
 
-      # -------------------------
-      # Fetch Android JRE runtimes
-      # -------------------------
-
+      # ----------------------------------------------------------------
+      # JRE DOWNLOADS (Conditional)
+      # ----------------------------------------------------------------
+      
       - name: Get JRE 8 (Android)
+        if: ${{ matrix.include_jre }}
         uses: dawidd6/action-download-artifact@v9
         with:
           workflow: build.yml
           repo: AngelAuraMC/angelauramc-openjdk-build
           branch: buildjre8
           name: jre8-pojav
-          path: app_pojavlauncher/src/main/assets/components/jre
+          path: Amethyst-Android/app_pojavlauncher/src/main/assets/components/jre
           workflow_conclusion: completed
-          if_no_artifact_found: fail
 
       - name: Get JRE 17 (Android)
+        if: ${{ matrix.include_jre }}
         uses: dawidd6/action-download-artifact@v9
         with:
           workflow: build.yml
           repo: AngelAuraMC/angelauramc-openjdk-build
           branch: buildjre17-21
           name: jre17-pojav
-          path: app_pojavlauncher/src/main/assets/components/jre-new
+          path: Amethyst-Android/app_pojavlauncher/src/main/assets/components/jre-new
           workflow_conclusion: completed
-          if_no_artifact_found: fail
 
       - name: Get JRE 21 (Android)
+        if: ${{ matrix.include_jre }}
         uses: dawidd6/action-download-artifact@v9
         with:
           workflow: build.yml
           repo: AngelAuraMC/angelauramc-openjdk-build
           branch: buildjre17-21
           name: jre21-pojav
-          path: app_pojavlauncher/src/main/assets/components/jre-21
+          path: Amethyst-Android/app_pojavlauncher/src/main/assets/components/jre-21
           workflow_conclusion: completed
-          if_no_artifact_found: fail
 
-      - name: Verify JRE assets
+      # -------------------------
+      # PATCHING & ASSETS
+      # -------------------------
+      
+      - name: Apply Patches
         run: |
-          test -d app_pojavlauncher/src/main/assets/components/jre
-          test -d app_pojavlauncher/src/main/assets/components/jre-new
-          test -d app_pojavlauncher/src/main/assets/components/jre-21
-
-      # -------------------------
-      # Gradle setup & build
-      # -------------------------
+          # Patches are in the root (../), applied to files inside Amethyst-Android
+          patch -p1 app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/tasks/MinecraftDownloader.java < ../MinecraftDownloader.patch
+          patch -p1 app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/Tools.java < ../Tools.patch
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          validate-wrappers: false
           gradle-version: '8.11'
 
-      - name: Build JRE JAR files
+      - name: Build APK
         run: |
-          cd Amethyst-Android
           ./scripts/languagelist_updater.sh
+          # Build JRE JARs and the main APK in one session
+          gradle :jre_lwjgl3glfw:build :app_pojavlauncher:assembleDebug --no-daemon
+
+      # -------------------------
+      # ARTIFACT PREP
+      # -------------------------
+
+      - name: Finalize Artifacts
+        run: |
           mkdir -p out
-          gradle :jre_lwjgl3glfw:build --no-daemon
+          mv app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/${{ matrix.artifact_name }}.apk
+          cd out
+          md5sum ${{ matrix.artifact_name }}.apk > ${{ matrix.artifact_name }}.md5
 
-      # -------------------------
-      # Apply custom patches
-      # -------------------------
-
-      - name: Patch files
-        run: |
-          patch ./Amethyst-Android/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/tasks/MinecraftDownloader.java MinecraftDownloader.patch
-          patch ./Amethyst-Android/app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/Tools.java Tools.patch
-
-      # -------------------------
-      # Build APKs
-      # -------------------------
-
-      - name: Build Debug APK (with runtime)
-        run: |
-          cd Amethyst-Android
-          gradle :app_pojavlauncher:assembleDebug
-          mv app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/app-debug.apk
-
-      - name: Build Debug APK (no runtime)
-        run: |
-          cd Amethyst-Android
-          rm -rf app_pojavlauncher/src/main/assets/components/jre
-          rm -rf app_pojavlauncher/src/main/assets/components/jre-new
-          rm -rf app_pojavlauncher/src/main/assets/components/jre-21
-          gradle :app_pojavlauncher:assembleDebug
-          mv app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/app-debug-noruntime.apk
-
-      - name: Generate checksums
-        run: |
-          cd Amethyst-Android
-          md5sum out/app-debug.apk > out/app-debug.md5
-          md5sum out/app-debug-noruntime.apk > out/app-debug-noruntime.md5
-
-      # -------------------------
-      # Upload build artifacts
-      # -------------------------
-
-      - name: Upload Debug APK
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: Amethyst-Android/out/app-debug.*
-
-      - name: Upload Debug APK (no runtime)
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug-noruntime
-          path: Amethyst-Android/out/app-debug-noruntime.*
+          name: ${{ matrix.artifact_name }}
+          path: Amethyst-Android/out/*
