@@ -1,0 +1,40 @@
+name: Submodule Sync
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Runs every day at midnight UTC
+  workflow_dispatch: # Allows you to run it manually whenever you want
+
+jobs:
+  sync:
+    name: Check for Submodule Updates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to push the update back to your repo
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true # Use 'true' instead of 'recursive' for faster sync check
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Submodules
+        run: |
+          # Fetch the latest commits for all submodules
+          git submodule update --remote --merge
+          
+      - name: Commit and Push if changed
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if there are actually any changes to commit
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "chore: sync submodules to latest upstream"
+            git push
+            echo "Submodules updated and pushed."
+          else
+            echo "No updates found. Everything is current."
+          fi
