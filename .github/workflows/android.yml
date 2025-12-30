@@ -129,4 +129,3 @@ jobs:
           prerelease: true
           files: |
             release-assets/*.apk
-            release-assets/*.md5
