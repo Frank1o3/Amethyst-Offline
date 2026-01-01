@@ -2,6 +2,12 @@ name: Android CI
 
 on:
   workflow_dispatch:
+    inputs:
+      clear_cache:
+        description: 'Clear NDK and JRE cache before building?'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -39,10 +45,13 @@ jobs:
       # --- NDK SETUP & CACHING ---
       - name: Cache NDK
         id: cache-ndk
+        # If clear_cache is true, we use a unique key to force a miss
         uses: actions/cache@v4
         with:
           path: /usr/local/lib/android/sdk/ndk/25.2.9519653
-          key: ${{ runner.os }}-ndk-25.2.9519653
+          key: ${{ runner.os }}-ndk-25.2.9519653-${{ github.event.inputs.clear_cache }}
+          restore-keys: |
+            ${{ runner.os }}-ndk-25.2.9519653-
 
       - name: Install NDK (Side by side)
         if: steps.cache-ndk.outputs.cache-hit != 'true'
@@ -59,21 +68,11 @@ jobs:
             Amethyst-Android/app_pojavlauncher/src/main/assets/components/jre
             Amethyst-Android/app_pojavlauncher/src/main/assets/components/jre-new
             Amethyst-Android/app_pojavlauncher/src/main/assets/components/jre-21
-          # We use a key that checks for existence. Change 'v1' to 'v2' to force a refresh.
-          key: ${{ runner.os }}-jres-v1
+          key: ${{ runner.os }}-jres-v1-${{ github.event.inputs.clear_cache }}
           restore-keys: |
-            ${{ runner.os }}-jres-v1
+            ${{ runner.os }}-jres-v1-
 
-      - name: Get JREs (If not cached)
-        if: ${{ matrix.include_jre && steps.cache-jres.outputs.cache-hit != 'true' }}
-        uses: dawidd6/action-download-artifact@v9
-        with:
-          workflow: build.yml
-          repo: AngelAuraMC/angelauramc-openjdk-build
-          workflow_conclusion: completed
-          # We must download individually to map to your specific paths
-          
-      - name: Download JRE 8
+      - name: Get JRE 8 (Android)
         if: ${{ matrix.include_jre && steps.cache-jres.outputs.cache-hit != 'true' }}
         uses: dawidd6/action-download-artifact@v9
         with:
@@ -82,8 +81,9 @@ jobs:
           branch: buildjre8
           name: jre8-pojav
           path: Amethyst-Android/app_pojavlauncher/src/main/assets/components/jre
+          workflow_conclusion: completed
 
-      - name: Download JRE 17
+      - name: Get JRE 17 (Android)
         if: ${{ matrix.include_jre && steps.cache-jres.outputs.cache-hit != 'true' }}
         uses: dawidd6/action-download-artifact@v9
         with:
@@ -92,8 +92,9 @@ jobs:
           branch: buildjre17-21
           name: jre17-pojav
           path: Amethyst-Android/app_pojavlauncher/src/main/assets/components/jre-new
+          workflow_conclusion: completed
 
-      - name: Download JRE 21
+      - name: Get JRE 21 (Android)
         if: ${{ matrix.include_jre && steps.cache-jres.outputs.cache-hit != 'true' }}
         uses: dawidd6/action-download-artifact@v9
         with:
@@ -102,8 +103,9 @@ jobs:
           branch: buildjre17-21
           name: jre21-pojav
           path: Amethyst-Android/app_pojavlauncher/src/main/assets/components/jre-21
+          workflow_conclusion: completed
 
-      # --- BUILD STEPS ---
+      # --- BUILD ---
       - name: Apply Patches
         run: |
           patch -p1 app_pojavlauncher/src/main/java/net/kdt/pojavlaunch/tasks/MinecraftDownloader.java < ../MinecraftDownloader.patch
@@ -113,15 +115,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11'
+          validate-wrappers: false 
 
       - name: Build APK
         run: |
           ./scripts/languagelist_updater.sh
-          # Enable parallel builds and build-cache for maximum speed
-          gradle :jre_lwjgl3glfw:build :app_pojavlauncher:assembleDebug \
-            --no-daemon \
-            --parallel \
-            --build-cache
+          gradle :jre_lwjgl3glfw:build :app_pojavlauncher:assembleDebug --no-daemon --parallel --build-cache
 
       - name: Finalize Artifacts
         run: |
@@ -155,8 +154,11 @@ jobs:
           tag_name: latest-dev
           name: "Latest Development Build"
           body: |
-            Automated build.
+            Automated build from the latest commit.
+            
+            **Build Details:**
             - Run ID: ${{ github.run_id }}
+            - Commit: ${{ github.sha }}
           draft: false
           prerelease: true
           files: |
