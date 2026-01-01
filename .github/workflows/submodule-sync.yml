@@ -16,15 +16,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # We need full depth to handle submodule history correctly
           fetch-depth: 0 
           submodules: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update Submodules
+      - name: Update Submodules to Latest on Configured Branches
         run: |
-          # Use --rebase to avoid "unrelated histories" merge errors
-          git submodule update --remote --rebase
+          # This will update each submodule to the latest commit on the branch
+          # specified in .gitmodules (or default branch if not specified)
+          git submodule update --remote --merge
           
       - name: Commit and Push if changed
         run: |
